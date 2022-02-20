@@ -103,7 +103,7 @@ function createOfferAndSendMessage(session) {
             var jsonMsg = {
                 'cmd': 'offer',
                 'roomId': roomId,
-                'uid': localUserId,
+                'uid': uid,
                 'remote_uid': remoteUserId,
                 'sdp': JSON.stringify(session)
             };
@@ -222,7 +222,7 @@ function doLeave() {
     var jsonMsg = {
         'cmd': 'leave',
         'roomId': roomId,
-        'uid': localUserId,
+        'uid': uid,
     };
     var message = JSON.stringify(jsonMsg);
     zeroRTCEngine.sendMessage(message);
