@@ -53,12 +53,73 @@ function handleRemoteStreamAdd(event) {
     remoteVideo.srcObject = remoteStream;
 }
 
+function handleConnectionStateChange() {
+    if(pc != null) {
+        console.info("ConnectionState -> " + pc.connectionState);
+    }
+}
+
+function handleIceConnectionStateChange() {
+    if(pc != null) {
+        console.info("IceConnectionState -> " + pc.iceConnectionState);
+    }
+}
+
 function createPeerConnection() {
+    var defaultConfiguration = {  
+        bundlePolicy: "max-bundle",
+        rtcpMuxPolicy: "require",
+        iceTransportPolicy:"relay",//relay 或者 all
+        // 修改ice数组测试效果，需要进行封装
+        iceServers: [
+            {
+                "urls": [
+                    "turn:192.168.221.134:3478?transport=udp",
+                    "turn:192.168.221.134:3478?transport=tcp"       // 可以插入多个进行备选
+                ],
+                "username": "lqf",
+                "credential": "123456"
+            },
+            {
+                "urls": [
+                    "stun:192.168.221.134:3478"
+                ]
+            }
+        ]
+    };
+
     pc = new RTCPeerConnection(null);
     pc.onicecandidate = handleIceCandidate;
     pc.ontrack = handleRemoteStreamAdd;
+    pc.onconnectionstatechange = handleConnectionStateChange;
+    pc.oniceconnectionstatechange = handleIceConnectionStateChange
 
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+}
+
+function createOfferAndSendMessage(session) {
+    pc.setLocalDescription(session)
+        .then(function () {
+            var jsonMsg = {
+                'cmd': 'offer',
+                'roomId': roomId,
+                'uid': localUserId,
+                'remote_uid': remoteUserId,
+                'sdp': JSON.stringify(session)
+            };
+            var message = JSON.stringify(jsonMsg);
+            zeroRTCEngine.sendMessage(message);
+            // console.info("send offer message: " + message);
+            console.info("send offer message");
+        })
+        .catch(function (error) {
+            console.error("offer setLocalDescription failed: " + error);
+        });
+
+}
+
+function handleCreateOfferError(error) {
+    console.error("handleCreateOfferError: " + error);
 }
 
 var zeroRTCEngine;
