@@ -298,7 +298,7 @@ function createAnswerAndSendMessage(session) {
                 'roomId': roomId,
                 'uid': uid,
                 'remote_uid': remoteUserId,
-                'msg': JSON.stringify(session)
+                'sdp': JSON.stringify(session)
             };
             var message = JSON.stringify(jsonMsg);
             zeroRTCEngine.sendMessage(message);
