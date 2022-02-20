@@ -25,6 +25,7 @@ var uid = 0;
 var localVideo = document.querySelector('#localVideo');
 var remoteVideo = document.querySelector('#remoteVideo');
 var localStream = null;
+var remoteStream = null;
 
 var pc = null;
 
