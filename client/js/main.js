@@ -205,7 +205,7 @@ function handleRemoteOffer(message) {
 function handleRemoteAnswer(message) {
     console.info("handleRemoteAnswer");
     var desc = JSON.parse(message.sdp);
-    pc.setRemoteDescription(desc);
+    pc.setRemoteDescription(desc.sdp);//sdp???
 }
 
 function handleRemoteCandidate(message) {
