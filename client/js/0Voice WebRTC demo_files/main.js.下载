@@ -34,7 +34,7 @@ function handleIceCandidate(event) {
     if (event.candidate) {
         var jsonMsg = {
             'cmd': 'candidate',
-            'roomId': roomId,
+            'roomid': roomId,
             'uid': uid,
             'remote_uid': remoteUserId,
             'candidates': JSON.stringify(event.candidate)
@@ -177,7 +177,7 @@ ZeroRTCEngine.prototype.sendMessage = function(message) {
 
 function handleResponseJoin(message) {
     console.info("handleResponseJoin, Uid: " + message.uid);
-    remoteUserId = message.remote_uid;
+    //remoteUserId = message.remoteUid;
     // doOffer();
 }
 
