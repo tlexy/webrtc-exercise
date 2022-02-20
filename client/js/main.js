@@ -198,7 +198,7 @@ function handleResponseJoin(message) {
 
 function handleRemoteNewPeer(message) {
     console.info("handleRemoteNewPeer, remoteUid: " + message.uid);
-    remoteUserId = message.remoteUid;
+    remoteUserId = message.uid;
     doOffer();
 }
 
