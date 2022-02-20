@@ -12,8 +12,8 @@ const SIGNAL_TYPE_RESP_JOIN = "resp-join";  // 告知加入者对方是谁
 const SIGNAL_TYPE_LEAVE = "leave";
 const SIGNAL_TYPE_NEW_PEER = "new-peer";
 const SIGNAL_TYPE_PEER_LEAVE = "peer-leave";
-const SIGNAL_TYPE_OFFER = "offer";
-const SIGNAL_TYPE_ANSWER = "answer";
+const SIGNAL_TYPE_OFFER = "sdp-offer";
+const SIGNAL_TYPE_ANSWER = "sdp-answer";
 const SIGNAL_TYPE_CANDIDATE = "candidate";
 
 
@@ -97,31 +97,6 @@ function createPeerConnection() {
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 }
 
-function createOfferAndSendMessage(session) {
-    pc.setLocalDescription(session)
-        .then(function () {
-            var jsonMsg = {
-                'cmd': 'offer',
-                'roomId': roomId,
-                'uid': uid,
-                'remote_uid': remoteUserId,
-                'sdp': JSON.stringify(session)
-            };
-            var message = JSON.stringify(jsonMsg);
-            zeroRTCEngine.sendMessage(message);
-            // console.info("send offer message: " + message);
-            console.info("send offer message");
-        })
-        .catch(function (error) {
-            console.error("offer setLocalDescription failed: " + error);
-        });
-
-}
-
-function handleCreateOfferError(error) {
-    console.error("handleCreateOfferError: " + error);
-}
-
 var zeroRTCEngine;
 
 var ZeroRTCEngine = function(wsUrl) {
@@ -175,6 +150,15 @@ ZeroRTCEngine.prototype.onMessage = function(event) {
         case SIGNAL_TYPE_PEER_LEAVE:
             handleRemotePeerLeave(jsonMsg);
             break;
+        case SIGNAL_TYPE_OFFER:
+            handleRemoteOffer(jsonMsg);
+            break;
+        case SIGNAL_TYPE_ANSWER:
+            handleRemoteAnswer(jsonMsg);
+            break;
+        case SIGNAL_TYPE_CANDIDATE:
+            handleRemoteCandidate(jsonMsg);
+            break;
     }
 }
 
@@ -207,6 +191,30 @@ function handleRemotePeerLeave(message) {
     remoteVideo.srcObject = null;
 }
 
+function handleRemoteOffer(message) {
+    console.info("handleRemoteOffer");
+    if(pc == null) {
+        createPeerConnection();
+    }
+    var desc = JSON.parse(message.sdp);
+    pc.setRemoteDescription(desc);
+    doAnswer();
+}
+
+function handleRemoteAnswer(message) {
+    console.info("handleRemoteAnswer");
+    var desc = JSON.parse(message.sdp);
+    pc.setRemoteDescription(desc);
+}
+
+function handleRemoteCandidate(message) {
+    console.info("handleRemoteCandidate");
+    var candidate = JSON.parse(message.candidates);
+    pc.addIceCandidate(candidate).catch(e => {
+        console.error("addIceCandidate failed:" + e.name);
+    });
+}
+
 function doJoin(roomId, uid) {
     var jsonMsg = {
         'cmd': 'join',
@@ -227,7 +235,52 @@ function doLeave() {
     var message = JSON.stringify(jsonMsg);
     zeroRTCEngine.sendMessage(message);
     console.info("doLeave message: " + message);
+    hangup();
 }
+
+function hangup() {
+    localVideo.srcObject = null; // 0.关闭自己的本地显示
+    remoteVideo.srcObject = null; // 1.不显示对方
+    closeLocalStream(); // 2. 关闭本地流
+    if(pc != null) {
+        pc.close(); // 3.关闭RTCPeerConnection
+        pc = null;
+    }
+}
+
+function closeLocalStream() {
+    if(localStream != null) {
+        localStream.getTracks().forEach((track) => {
+                track.stop();
+        });
+    }
+}
+
+function createOfferAndSendMessage(session) {
+    pc.setLocalDescription(session)
+        .then(function () {
+            var jsonMsg = {
+                'cmd': 'sdp-offer',
+                'roomId': roomId,
+                'uid': uid,
+                'remote_uid': remoteUserId,
+                'sdp': JSON.stringify(session)
+            };
+            var message = JSON.stringify(jsonMsg);
+            zeroRTCEngine.sendMessage(message);
+            // console.info("send offer message: " + message);
+            console.info("send offer message");
+        })
+        .catch(function (error) {
+            console.error("offer setLocalDescription failed: " + error);
+        });
+
+}
+
+function handleCreateOfferError(error) {
+    console.error("handleCreateOfferError: " + error);
+}
+
 
 function doOffer() {
     // 创建RTCPeerConnection
@@ -235,6 +288,31 @@ function doOffer() {
         createPeerConnection();
     }
     pc.createOffer().then(createOfferAndSendMessage).catch(handleCreateOfferError);
+}
+
+function createAnswerAndSendMessage(session) {
+    pc.setLocalDescription(session)
+        .then(function () {
+            var jsonMsg = {
+                'cmd': 'sdp-answer',
+                'roomId': roomId,
+                'uid': uid,
+                'remote_uid': remoteUserId,
+                'msg': JSON.stringify(session)
+            };
+            var message = JSON.stringify(jsonMsg);
+            zeroRTCEngine.sendMessage(message);
+            // console.info("send answer message: " + message);
+            console.info("send answer message");
+        })
+        .catch(function (error) {
+            console.error("answer setLocalDescription failed: " + error);
+        });
+
+}
+
+function handleCreateAnswerError(error) {
+    console.error("handleCreateAnswerError: " + error);
 }
 
 function doAnswer() {
