@@ -11,12 +11,12 @@ const SIGNAL_TYPE_OFFER = "sdp-offer";
 const SIGNAL_TYPE_ANSWER = "sdp-answer";
 const SIGNAL_TYPE_CANDIDATE = "candidate";
 
-function initLocalStream2(stream)
-{
-    console.log("step 1")
-    this.local_stream = stream;
-    localVideo.srcObject = this.local_stream;
-}
+// function initLocalStream2(stream)
+// {
+//     console.log("step 1")
+//     this.local_stream = stream;
+//     localVideo.srcObject = this.local_stream;
+// }
 
 class ZalRtcPeer {
     constructor(roomId, localUid) {
@@ -29,14 +29,16 @@ class ZalRtcPeer {
 
     CreateOffer(remoteUid) { }
 
-    // initLocalStream(stream)
-    // {
-    //     this.local_stream = stream;
-    // }
+    initLocalStream(stream)
+    {
+        console.log("step 1")
+        this.local_stream = stream;
+        localVideo.srcObject = this.local_stream;
+    }
 
     OpenLocalStream()
     {
-        let fb = initLocalStream2.bind(this);
+        let fb = this.initLocalStream.bind(this);
         navigator.mediaDevices.getUserMedia({
             audio: true,
             video: true
@@ -45,33 +47,6 @@ class ZalRtcPeer {
         .catch(function(e){
             alert("getUserMedia error: " + e.name);
         });
-    }
-}
-
-//websocket处理函数
-function OnServerMsg(ev)
-{
-    console.log("onMessage: " + ev.data);
-    let json = JSON.parse(ev.data);
-    switch (json.cmd) {
-        case SIGNAL_TYPE_NEW_PEER:
-            this.handleRemoteNewPeer(json);
-            break;
-        case SIGNAL_TYPE_RESP_JOIN:
-            this.handleResponseJoin(json);
-            break;
-        case SIGNAL_TYPE_PEER_LEAVE:
-            this.handleRemotePeerLeave(json);
-            break;
-        case SIGNAL_TYPE_OFFER:
-            this.handleRemoteOffer(json);
-            break;
-        case SIGNAL_TYPE_ANSWER:
-            this.handleRemoteAnswer(json);
-            break;
-        case SIGNAL_TYPE_CANDIDATE:
-            this.handleRemoteCandidate(json);
-            break;
     }
 }
 
@@ -100,15 +75,42 @@ class ZalRtc
             console.log("websocket close.");
         }
 
-        let fb = OnServerMsg.bind(this);
+        let fb = this.OnServerMsg.bind(this);
         this.ws_connection.onmessage = fb;
+    }
+
+    //websocket处理函数
+    OnServerMsg(ev) 
+    {
+        console.log("onMessage: " + ev.data);
+        let json = JSON.parse(ev.data);
+        switch (json.cmd) {
+            case SIGNAL_TYPE_NEW_PEER:
+                this.handleRemoteNewPeer(json);
+                break;
+            case SIGNAL_TYPE_RESP_JOIN:
+                this.handleResponseJoin(json);
+                break;
+            case SIGNAL_TYPE_PEER_LEAVE:
+                this.handleRemotePeerLeave(json);
+                break;
+            case SIGNAL_TYPE_OFFER:
+                this.handleRemoteOffer(json);
+                break;
+            case SIGNAL_TYPE_ANSWER:
+                this.handleRemoteAnswer(json);
+                break;
+            case SIGNAL_TYPE_CANDIDATE:
+                this.handleRemoteCandidate(json);
+                break;
+        }
     }
 
     //信令部分
     //新人加入房间
     handleRemoteNewPeer(json) 
     {
-
+        
     }
 
     //加入房间成功
