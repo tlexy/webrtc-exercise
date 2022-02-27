@@ -1,6 +1,7 @@
 'use strict';
 
 let localVideo = document.querySelector('#localVideo');
+let remoteVideo = document.querySelector('#remoteVideo');
 
 const SIGNAL_TYPE_JOIN = "join";
 const SIGNAL_TYPE_RESP_JOIN = "resp-join"; 
@@ -19,21 +20,182 @@ const SIGNAL_TYPE_CANDIDATE = "candidate";
 // }
 
 class ZalRtcPeer {
-    constructor(roomId, localUid) {
+    constructor(roomId, localUid, ws) {
         this.room_id = roomId;
         this.local_uid = localUid;
         this.remote_uid = -1;
         this.pc = null;
         this.local_stream = null;
+        this.remote_stream = null;
+        this.ws_connection = ws;
+        this.local_desc = null;
     }
 
-    CreateOffer(remoteUid) { }
+    CreatePeerConnection() 
+    {
+        let conf = {
+            bundlePolicy: "max-bundle",
+            rtcpMuxPolicy: "require",
+            iceTransportPolicy: "all",//relay 或者 all
+            // 修改ice数组测试效果，需要进行封装
+            iceServers: [
+                {
+                    "urls": [
+                        "turn:81.71.41.235:3478?transport=udp",
+                        "turn:81.71.41.235:3478?transport=tcp"       // 可以插入多个进行备选
+                    ],
+                    "username": "test",
+                    "credential": "tttaBa231"
+                },
+                {
+                    "urls": [
+                        "stun:81.71.41.235:3478"
+                    ]
+                }
+            ]
+        };
+        this.pc = new RTCPeerConnection(conf);
+
+        this.pc.onicecandidate = this.handleIceCandidate.bind(this);
+        this.pc.ontrack = this.handleRemoteStreamAdd.bind(this);
+
+        this.local_stream.getTracks().forEach(track => this.pc.addTrack(track, this.local_stream));
+    }
+
+    //加入房间
+    SendJoin() {
+        let jsonMsg = {
+            'cmd': 'join',
+            'roomId': this.room_id,
+            'uid': this.local_uid,
+        };
+        let msg = JSON.stringify(jsonMsg);
+        this.ws_connection.send(msg);
+    }
+
+    sendSdpOffer() 
+    {
+        var jsonMsg = {
+            'cmd': 'sdp-offer',
+            'roomId': this.room_id,
+            'uid': this.local_uid,
+            'remote_uid': this.remote_uid,
+            'sdp': JSON.stringify(this.local_desc)
+        };
+        var message = JSON.stringify(jsonMsg);
+        this.ws_connection.send(message);
+        console.info("send offer message: " + message);
+    }
+
+    doCreateOffer(session) 
+    {
+        this.local_desc = session;
+        this.pc.setLocalDescription(session).then(this.sendSdpOffer.bind(this)).catch(function (e) {
+            console.error("doCreateOffer offer setLocalDescription failed: " + e);
+        });
+    }
+
+    CreateOffer(remoteUid) 
+    { 
+        this.remote_uid = remoteUid;
+        if (this.pc == null)
+        {
+            this.CreatePeerConnection();
+        }
+        this.pc.createOffer().then(this.doCreateOffer.bind(this)).catch(function(e){
+            console.error("handleCreateOfferError: " + e);
+        });
+    }
+
+    sendSdpAnswer()
+    {
+        var jsonMsg = {
+            'cmd': 'sdp-answer',
+            'roomId': this.room_id,
+            'uid': this.local_uid,
+            'remote_uid': this.remote_uid,
+            'sdp': JSON.stringify(this.local_desc)
+        };
+        var message = JSON.stringify(jsonMsg);
+        this.ws_connection.send(message);
+        console.info("send answer offer message: " + message);
+    }
+
+    doCreateAnswer(session)
+    {
+        this.local_desc = session;
+        this.pc.setLocalDescription(session).then(this.sendSdpAnswer.bind(this)).catch(function(e){
+            console.error("doCreateAnswer offer setLocalDescription failed: " + e);
+        });
+    }
+
+    doAnswer()
+    {
+        this.pc.createAnswer().then(this.doCreateAnswer.bind(this)).catch(function(e){
+            console.error("create answer failed: " + e);
+        });
+    }
+
+    CreateAnswer(remoteUid, sdp_offer)
+    {
+        this.remote_uid = remoteUid;
+        if (this.pc == null) 
+        {
+            this.CreatePeerConnection();
+        }
+        this.pc.setRemoteDescription(sdp_offer)
+        this.doAnswer();
+    }
+
+    SetRemoteSdp(sdp)
+    {
+        var desc = JSON.parse(sdp);
+        this.pc.setRemoteDescription(desc);
+    }
+
+    addIceCandidate(candis)
+    {
+        let candidate = JSON.parse(candis);
+        this.pc.addIceCandidate(candidate)
+            .catch(function(e){
+                console.error("addIceCandidate failed: " + e);
+            });
+    }
+
+    handleIceCandidate(event)
+    {
+        console.info("handleIceCandidate");
+        if (event.candidate) 
+        {
+            var jsonMsg = {
+                'cmd': 'candidate',
+                'roomId': this.room_id,
+                'uid': this.local_uid,
+                'remote_uid': this.remote_uid,
+                'candidates': JSON.stringify(event.candidate)
+            };
+            var message = JSON.stringify(jsonMsg);
+            this.ws_connection.send(message);
+            console.info("send candidate message");
+        } else 
+        {
+            console.warn("End of candidates");
+        }
+    }
+
+    handleRemoteStreamAdd(ev)
+    {
+        console.info("handleRemoteStreamAdd");
+        this.remote_stream = ev.streams[0];
+        remoteVideo.srcObject = this.remote_stream;//this.local_stream;//
+    }
 
     initLocalStream(stream)
     {
         console.log("step 1")
         this.local_stream = stream;
         localVideo.srcObject = this.local_stream;
+        this.SendJoin();//流初始化发送加入房间信令
     }
 
     OpenLocalStream()
@@ -59,6 +221,7 @@ class ZalRtc
         this.ws_addr = wsAddr;
         this.room = new Map();
         this.room_id = -1;
+        this.local_uid = -1;
     }
 
     CreateToServer() 
@@ -110,7 +273,22 @@ class ZalRtc
     //新人加入房间
     handleRemoteNewPeer(json) 
     {
-        
+        let remoteUid = json.uid;
+        let roomid = json.roomId;
+        if (roomid != this.room_id)
+        {
+            console.error("roomid error: " + roomid, ", this.roomid: " + this.room_id);
+            return;
+        }
+        let ZalRtcPeerObj = this.room.get(this.local_uid);
+        if (ZalRtcPeerObj)
+        {
+            ZalRtcPeerObj.CreateOffer(remoteUid);
+        }
+        else 
+        {
+            console.log("handleRemoteNewPeer peer obj is null");
+        }
     }
 
     //加入房间成功
@@ -118,7 +296,7 @@ class ZalRtc
     {
         console.log("step 2");
         let uid = json.uid;
-        let roomid = json.roomid;
+        let roomid = json.roomId;
         if (!this.room.has(uid) || roomid != this.room_id)
         {
             alert("resp, uid: " + uid + ", roomid: " + roomid);
@@ -141,35 +319,67 @@ class ZalRtc
     handleRemotePeerLeave(json) { }
 
     //对端发送sdp-offer
-    handleRemoteOffer(json) { }
+    handleRemoteOffer(json) 
+    {
+        let remoteUid = json.uid;
+        console.log("remote sdp-offer: " + json);
+        let ZalRtcPeerObj = this.room.get(this.local_uid);
+        if (ZalRtcPeerObj) {
+            let desc = JSON.parse(json.sdp);
+            ZalRtcPeerObj.CreateAnswer(remoteUid, desc);
+        }
+        else {
+            console.log("handleRemoteNewPeer peer obj is null");
+        }
+    }
 
     //对端发送sdp-answer
-    handleRemoteAnswer(json) { }
+    handleRemoteAnswer(json) 
+    { 
+        console.log("handleRemoteAnswer: " + json);
+        let uid = json.remote_uid;
+        let roomid = json.roomId;
+        if (roomid != this.room_id) {
+            console.error("handleRemoteAnswer, roomid error: " + roomid);
+            return;
+        }
+        let ZalRtcPeerObj = this.room.get(uid);
+        if (typeof (ZalRtcPeerObj) == "undefined") {
+            console.error("handleRemoteAnswer, user not found, uid: " + uid);
+            return;
+        }
+        ZalRtcPeerObj.SetRemoteSdp(json.sdp);
+    }
 
     //对端发送candidate
-    handleRemoteCandidate(json) { }
-
-    //加入房间
-    Join(ZalRtcPeerObj)
+    handleRemoteCandidate(json) 
     {
-        let jsonMsg = {
-            'cmd': 'join',
-            'roomId': this.room_id,
-            'uid': ZalRtcPeerObj.local_uid,
-        };
-        let msg = JSON.stringify(jsonMsg);
-        this.ws_connection.send(msg);
-        //ZalRtcPeerObj.OpenLocalStream();
+        console.log("handleRemoteCandidate: " + json);
+        let uid = json.remote_uid;
+        let roomid = json.roomId;
+        if (roomid != this.room_id)
+        {
+            console.error("handleRemoteCandidate, roomid error: " + roomid);
+            return;
+        }
+        let ZalRtcPeerObj = this.room.get(uid);
+        if (typeof(ZalRtcPeerObj) == "undefined")
+        {
+            console.error("handleRemoteCandidate, user not found, uid: " + uid);
+            return;
+        }
+        ZalRtcPeerObj.addIceCandidate(json.candidates);
     }
 
     //主动的动作
     JoinRoom(roomId, Uid)
     {
         this.room_id = roomId;
-        let peer = new ZalRtcPeer(roomId, Uid)
+        let peer = new ZalRtcPeer(roomId, Uid, this.ws_connection);
         peer.OpenLocalStream();
-        this.Join(peer);
+        //peer.SendJoin(peer);
         this.room.set(Uid, peer);
+        this.local_uid = Uid;
     }
 
 }
