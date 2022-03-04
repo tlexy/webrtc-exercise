@@ -19,19 +19,19 @@ const SIGNAL_TYPE_CANDIDATE = "candidate";
 //     localVideo.srcObject = this.local_stream;
 // }
 
-class ZalPeerConnection{
-    constructor(ws, roomId, localUid, remoteUid, localStream){
+class ZalRtcPeer {
+    constructor(roomId, localUid, ws) {
         this.room_id = roomId;
         this.local_uid = localUid;
-        this.remote_uid = remoteUid;
-        this.ws_connection = ws;
-        this.local_stream = localStream;
-        this.remote_stream = null;
+        this.remote_uid = -1;
         this.pc = null;
+        this.local_stream = null;
+        this.remote_stream = null;
+        this.ws_connection = ws;
         this.local_desc = null;
     }
 
-    CreatePeerConnection(remoteUid) 
+    CreatePeerConnection() 
     {
         let conf = {
             bundlePolicy: "max-bundle",
@@ -58,36 +58,19 @@ class ZalPeerConnection{
 
         this.pc.onicecandidate = this.handleIceCandidate.bind(this);
         this.pc.ontrack = this.handleRemoteStreamAdd.bind(this);
-        //this.local_stream.getTracks().forEach(track => this.pc.addTrack(track, this.local_stream));
-        this.local_stream.getTracks().forEach(track => apc.addTrack(track, this.local_stream));
+
+        this.local_stream.getTracks().forEach(track => this.pc.addTrack(track, this.local_stream));
     }
 
-    handleIceCandidate(event)
-    {
-        console.info("handleIceCandidate");
-        if (event.candidate) 
-        {
-            var jsonMsg = {
-                'cmd': 'candidate',
-                'roomId': this.room_id,
-                'uid': this.local_uid,
-                'remote_uid': this.remote_uid,
-                'candidates': JSON.stringify(event.candidate)
-            };
-            var message = JSON.stringify(jsonMsg);
-            this.ws_connection.send(message);
-            console.info("send candidate message");
-        } else 
-        {
-            console.warn("End of candidates");
-        }
-    }
-
-    handleRemoteStreamAdd(ev)
-    {
-        console.info("handleRemoteStreamAdd");
-        this.remote_stream = ev.streams[0];
-        //创建新的窗口并显示
+    //加入房间
+    SendJoin() {
+        let jsonMsg = {
+            'cmd': 'join',
+            'roomId': this.room_id,
+            'uid': this.local_uid,
+        };
+        let msg = JSON.stringify(jsonMsg);
+        this.ws_connection.send(msg);
     }
 
     sendSdpOffer() 
@@ -112,8 +95,9 @@ class ZalPeerConnection{
         });
     }
 
-    CreateOffer() 
+    CreateOffer(remoteUid) 
     { 
+        this.remote_uid = remoteUid;
         if (this.pc == null)
         {
             this.CreatePeerConnection();
@@ -123,7 +107,6 @@ class ZalPeerConnection{
         });
     }
 
-    //sdp-answer
     sendSdpAnswer()
     {
         var jsonMsg = {
@@ -153,9 +136,9 @@ class ZalPeerConnection{
         });
     }
 
-
-    CreateAnswer(sdp_offer)
+    CreateAnswer(remoteUid, sdp_offer)
     {
+        this.remote_uid = remoteUid;
         if (this.pc == null) 
         {
             this.CreatePeerConnection();
@@ -164,80 +147,47 @@ class ZalPeerConnection{
         this.doAnswer();
     }
 
-    SetRemoteDescription(desc)
+    SetRemoteSdp(sdp)
     {
+        var desc = JSON.parse(sdp);
         this.pc.setRemoteDescription(desc);
     }
 
-    AddIceCandidate(candis)
+    addIceCandidate(candis)
     {
-        this.pc.addIceCandidate(candis)
+        let candidate = JSON.parse(candis);
+        this.pc.addIceCandidate(candidate)
             .catch(function(e){
                 console.error("addIceCandidate failed: " + e);
             });
     }
-}
 
-class ZalRtcPeer {
-    constructor(roomId, localUid, ws) {
-        this.room_id = roomId;
-        this.local_uid = localUid;
-        this.remote_uid = -1;
-        this.pc = null;
-        this.local_stream = null;
-        this.remote_stream = null;
-        this.ws_connection = ws;
-        this.local_desc = null;
-        this.pc_map = new Map();
-    }
-
-    //加入房间
-    SendJoin() {
-        let jsonMsg = {
-            'cmd': 'join',
-            'roomId': this.room_id,
-            'uid': this.local_uid,
-        };
-        let msg = JSON.stringify(jsonMsg);
-        this.ws_connection.send(msg);
-    }
-
-    CreateOffer(remoteUid) 
-    { 
-        let zpc = new ZalPeerConnection(this.ws_connection, this.room_id, this.local_uid, remoteUid, this.local_stream);
-        this.pc_map[remoteUid] = zpc;
-        zpc.CreateOffer();
-    }
-
-    CreateAnswer(remoteUid, sdp_offer)
+    handleIceCandidate(event)
     {
-        //this.remote_uid = remoteUid;
-        let zpc = new ZalPeerConnection(this.ws_connection, this.room_id, this.local_uid, remoteUid, this.local_stream);
-        this.pc_map[remoteUid] = zpc;
-        zpc.CreateAnswer(sdp_offer);
-    }
-
-    SetRemoteSdp(remoteUid, sdp)
-    {
-        let apc = this.pc_map.get(remoteUid);
-        if (typeof (apc) == "undefined") {
-            console.error("SetRemoteSdp, pc not found, uid: " + remoteUid);
-            return;
+        console.info("handleIceCandidate");
+        if (event.candidate) 
+        {
+            var jsonMsg = {
+                'cmd': 'candidate',
+                'roomId': this.room_id,
+                'uid': this.local_uid,
+                'remote_uid': this.remote_uid,
+                'candidates': JSON.stringify(event.candidate)
+            };
+            var message = JSON.stringify(jsonMsg);
+            this.ws_connection.send(message);
+            console.info("send candidate message");
+        } else 
+        {
+            console.warn("End of candidates");
         }
-        var desc = JSON.parse(sdp);
-        apc.SetRemoteDescription(desc);
     }
 
-    AddIceCandidate(remoteUid, candis)
+    handleRemoteStreamAdd(ev)
     {
-        let apc = this.pc_map.get(remoteUid);
-        if (typeof (apc) == "undefined") {
-            console.error("SetRemoteSdp, pc not found, uid: " + remoteUid);
-            return;
-        }
-
-        let candidate = JSON.parse(candis);
-        apc.AddIceCandidate(candidate);
+        console.info("handleRemoteStreamAdd");
+        this.remote_stream = ev.streams[0];
+        remoteVideo.srcObject = this.remote_stream;//this.local_stream;//
     }
 
     initLocalStream(stream)
@@ -353,6 +303,16 @@ class ZalRtc
             return;
         }
         console.log("room size: " + this.room.size + ", uid: " + uid);
+        // 调用这里，ZalRtcPeerObj.local_stream属性仍然可能没有设置（至少服务器在本地的情况下是这样的。）
+        // let ZalRtcPeerObj = this.room.get(uid);
+        // if (ZalRtcPeerObj)
+        // {
+        //     localVideo.srcObject = ZalRtcPeerObj.local_stream;
+        // }
+        // else 
+        // {
+        //     console.log("peer obj is null");
+        // }
     }
 
     //对端离开
@@ -388,8 +348,7 @@ class ZalRtc
             console.error("handleRemoteAnswer, user not found, uid: " + uid);
             return;
         }
-        let remote_uid = json.uid;
-        ZalRtcPeerObj.SetRemoteSdp(remote_uid, json.sdp);
+        ZalRtcPeerObj.SetRemoteSdp(json.sdp);
     }
 
     //对端发送candidate
@@ -409,9 +368,7 @@ class ZalRtc
             console.error("handleRemoteCandidate, user not found, uid: " + uid);
             return;
         }
-
-        let remote_uid = json.uid;
-        ZalRtcPeerObj.AddIceCandidate(remote_uid, json.candidates);
+        ZalRtcPeerObj.addIceCandidate(json.candidates);
     }
 
     //主动的动作
