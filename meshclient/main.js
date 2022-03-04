@@ -2,6 +2,7 @@
 
 let localVideo = document.querySelector('#localVideo');
 let remoteVideo = document.querySelector('#remoteVideo');
+let remote_count = 0;
 
 const SIGNAL_TYPE_JOIN = "join";
 const SIGNAL_TYPE_RESP_JOIN = "resp-join"; 
@@ -29,6 +30,7 @@ class ZalPeerConnection{
         this.remote_stream = null;
         this.pc = null;
         this.local_desc = null;
+        this.video_index = 0;
     }
 
     CreatePeerConnection(remoteUid) 
@@ -87,7 +89,16 @@ class ZalPeerConnection{
     {
         console.info("handleRemoteStreamAdd");
         this.remote_stream = ev.streams[0];
+        remote_count = remote_count + 1;
         //创建新的窗口并显示
+        this.video_index = remote_count;
+        let remoteVideo = document.querySelector('#remoteVideo' + this.video_index);
+        if (typeof (remoteVideo) == "undefined") {
+            console.log("too much remote video");
+            return;
+        }
+        remoteVideo.srcObject = this.remote_stream;
+
     }
 
     sendSdpOffer() 
@@ -323,6 +334,11 @@ class ZalRtc
     //新人加入房间
     handleRemoteNewPeer(json) 
     {
+        if (remote_count >= 5)
+        {
+            console.log("too much remote peer");
+            return;
+        }
         let remoteUid = json.uid;
         let roomid = json.roomId;
         if (roomid != this.room_id)
@@ -427,7 +443,7 @@ class ZalRtc
 
 }
 
-let zal_rtc = new ZalRtc("ws://192.168.101.40:8010");
+let zal_rtc = new ZalRtc("ws://192.168.8.139:8010");
 zal_rtc.CreateToServer();
 
 //action
