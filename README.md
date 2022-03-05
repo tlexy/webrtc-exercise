@@ -5,4 +5,4 @@
 ## meshclient
 支持多人通话
 ## 服务器
-[!C++ websocket信令服务器](https://github.com/tlexy/websocket-signalserver)
+[C++ websocket信令服务器](https://github.com/tlexy/websocket-signalserver)
