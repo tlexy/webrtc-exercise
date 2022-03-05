@@ -28,6 +28,7 @@ class ZalPeerConnection{
         this.ws_connection = ws;
         this.local_stream = localStream;
         this.remote_stream = null;
+        this.remote_lbl = null;
         this.pc = null;
         this.local_desc = null;
         this.video_index = 0;
@@ -61,7 +62,7 @@ class ZalPeerConnection{
         this.pc.onicecandidate = this.handleIceCandidate.bind(this);
         this.pc.ontrack = this.handleRemoteStreamAdd.bind(this);
         //this.local_stream.getTracks().forEach(track => this.pc.addTrack(track, this.local_stream));
-        this.local_stream.getTracks().forEach(track => apc.addTrack(track, this.local_stream));
+        this.local_stream.getTracks().forEach(track => this.pc.addTrack(track, this.local_stream));
     }
 
     handleIceCandidate(event)
@@ -88,16 +89,21 @@ class ZalPeerConnection{
     handleRemoteStreamAdd(ev)
     {
         console.info("handleRemoteStreamAdd");
+        console.log("remote stream id: " + ev.streams[0].id);
+        if (ev.track.kind != "video")
+        {
+            return;
+        }
         this.remote_stream = ev.streams[0];
         remote_count = remote_count + 1;
         //创建新的窗口并显示
         this.video_index = remote_count;
-        let remoteVideo = document.querySelector('#remoteVideo' + this.video_index);
-        if (typeof (remoteVideo) == "undefined") {
-            console.log("too much remote video");
+        this.remote_lbl = document.querySelector('#remoteVideo_' + this.video_index);
+        if (typeof (this.remote_lbl) == "undefined") {
+            console.error("too much remote video");
             return;
         }
-        remoteVideo.srcObject = this.remote_stream;
+        this.remote_lbl.srcObject = this.remote_stream;
 
     }
 
@@ -215,16 +221,18 @@ class ZalRtcPeer {
 
     CreateOffer(remoteUid) 
     { 
+        console.log("CreateOffer new zpc " + remoteUid);
         let zpc = new ZalPeerConnection(this.ws_connection, this.room_id, this.local_uid, remoteUid, this.local_stream);
-        this.pc_map[remoteUid] = zpc;
+        this.pc_map.set(remoteUid, zpc);
         zpc.CreateOffer();
     }
 
     CreateAnswer(remoteUid, sdp_offer)
     {
+        console.log("CreateAnswer new zpc " + remoteUid);
         //this.remote_uid = remoteUid;
         let zpc = new ZalPeerConnection(this.ws_connection, this.room_id, this.local_uid, remoteUid, this.local_stream);
-        this.pc_map[remoteUid] = zpc;
+        this.pc_map.set(remoteUid, zpc);
         zpc.CreateAnswer(sdp_offer);
     }
 
@@ -443,7 +451,7 @@ class ZalRtc
 
 }
 
-let zal_rtc = new ZalRtc("ws://192.168.8.139:8010");
+let zal_rtc = new ZalRtc("ws://192.168.101.40:8010");
 zal_rtc.CreateToServer();
 
 //action
